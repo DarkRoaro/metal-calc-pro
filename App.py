@@ -81,16 +81,29 @@ class MetalLogic:
 
 # --- 4. ГЕНЕРАТОР ДИЗАЙНА ---
 def generate_voronoi(w, h, pts_count):
+    # Генерируем случайные точки
     points = np.random.rand(pts_count, 2) * [w, h]
-    points = np.vstack([points, [[0,0], [w,0], [w,h], [0,h]]])
+    
+    # Добавляем жесткие границы, чтобы узор не «улетал»
+    boundary = np.array([[0, 0], [w, 0], [w, h], [0, h]])
+    points = np.vstack([points, boundary])
+    
     vor = Voronoi(points)
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
+    
     for r in vor.ridge_vertices:
         if -1 not in r:
-            v1, v2 = vor.vertices[r], vor.vertices[r]
-            if (0<=v1<=w and 0<=v1<=h and 0<=v2<=w and 0<=v2<=h):
+            v1 = vor.vertices[r[0]]
+            v2 = vor.vertices[r[1]]
+            
+            # Правильная проверка: лежат ли обе точки внутри нашего листа
+            # Проверяем X и Y для каждой точки отдельно
+            if (0 <= v1[0] <= w and 0 <= v1[1] <= h and 
+                0 <= v2[0] <= w and 0 <= v2[1] <= h):
                 msp.add_line(v1, v2)
+                
+    # Добавляем рамку листа (контур)
     msp.add_lwpolyline([(0,0), (w,0), (w,h), (0,h), (0,0)])
     return doc
 
