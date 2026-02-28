@@ -4,8 +4,9 @@ import math
 import numpy as np
 from scipy.spatial import Voronoi
 from io import BytesIO, StringIO
+import matplotlib.pyplot as plt
 
-# --- 1. ЗАЩИТА ПАРОЛЕМ (Через Secrets) ---
+# --- 1. СИСТЕМА ПАРОЛЯ (Берет пароль из Secrets) ---
 def check_password():
     def password_entered():
         if st.session_state["password"] == st.secrets["password"]:
@@ -27,7 +28,29 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. ЛОГИКА РАСЧЕТА ---
+# --- 2. ФУНКЦИЯ ОТРИСОВКИ ЧЕРТЕЖА ---
+def draw_dxf(doc):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    msp = doc.modelspace()
+    for e in msp:
+        if e.dxftype() == 'LINE':
+            ax.plot([e.dxf.start.x, e.dxf.end.x], [e.dxf.start.y, e.dxf.end.y], color='black', lw=0.7)
+        elif e.dxftype() == 'LWPOLYLINE':
+            pts = np.array(list(e.get_points()))
+            ax.plot(pts[:, 0], pts[:, 1], color='black', lw=0.7)
+        elif e.dxftype() == 'CIRCLE':
+            circle = plt.Circle((e.dxf.center.x, e.dxf.center.y), e.dxf.radius, color='black', fill=False, lw=0.7)
+            ax.add_patch(circle)
+        elif e.dxftype() == 'ARC':
+            # Упрощенная отрисовка дуги через точки
+            pts = list(e.flattening(0.1))
+            ax.plot([p.x for p in pts], [p.y for p in pts], color='black', lw=0.7)
+            
+    ax.set_aspect('equal')
+    ax.axis('off')
+    return fig
+
+# --- 3. ЛОГИКА РАСЧЕТОВ ---
 class MetalLogic:
     def __init__(self):
         self.materials = {
@@ -36,7 +59,7 @@ class MetalLogic:
             "Нержавейка": {"density": 8000, "price": 6.0}
         }
 
-    def get_dxf_length(self, file_bytes):
+    def get_stats(self, file_bytes):
         try:
             doc = ezdxf.readfile(BytesIO(file_bytes.read()))
             msp = doc.modelspace()
@@ -48,83 +71,87 @@ class MetalLogic:
                     pts = e.get_points()
                     for i in range(len(pts)-1):
                         length += math.dist(pts[i], pts[i+1])
-                elif e.dxftype() == 'ARC':
-                    length += math.radians(e.dxf.end_angle - e.dxf.start_angle) * e.dxf.radius
                 elif e.dxftype() == 'CIRCLE':
                     length += 2 * math.pi * e.dxf.radius
-            return length / 1000 # в метры
+                elif e.dxftype() == 'ARC':
+                    length += math.radians(abs(e.dxf.end_angle - e.dxf.start_angle)) * e.dxf.radius
+            return length / 1000, doc
         except:
-            return 0
+            return 0, None
 
-# --- 3. ГЕНЕРАТОР ДИЗАЙНА ---
-def generate_voronoi(width, height, pts_count):
-    points = np.random.rand(pts_count, 2) * [width, height]
-    # Границы для стабильности сетки
-    points = np.vstack([points, [[0,0], [width,0], [width,height], [0,height]]])
+# --- 4. ГЕНЕРАТОР ДИЗАЙНА ---
+def generate_voronoi(w, h, pts_count):
+    points = np.random.rand(pts_count, 2) * [w, h]
+    points = np.vstack([points, [[0,0], [w,0], [w,h], [0,h]]])
     vor = Voronoi(points)
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
-    for ridge in vor.ridge_vertices:
-        if -1 not in ridge:
-            v1, v2 = vor.vertices[ridge[0]], vor.vertices[ridge[1]]
-            if (0 <= v1[0] <= width and 0 <= v1[1] <= height and 
-                0 <= v2[0] <= width and 0 <= v2[1] <= height):
+    for r in vor.ridge_vertices:
+        if -1 not in r:
+            v1, v2 = vor.vertices[r], vor.vertices[r]
+            if (0<=v1<=w and 0<=v1<=h and 0<=v2<=w and 0<=v2<=h):
                 msp.add_line(v1, v2)
-    msp.add_lwpolyline([(0,0), (width,0), (width,height), (0,height), (0,0)])
+    msp.add_lwpolyline([(0,0), (w,0), (w,h), (0,h), (0,0)])
     return doc
 
-# --- 4. ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
-st.set_page_config(page_title="ArtMetal Pro", page_icon="⚒️")
+# --- 5. ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
+st.set_page_config(page_title="ArtMetal Tallinn", page_icon="⚒️")
 logic = MetalLogic()
 
-st.title("⚒️ ArtMetal: Калькулятор & Дизайн")
+st.title("⚒️ ArtMetal: Дизайн и Расчет")
 
-tab1, tab2 = st.tabs(["💰 Расчет заказа", "🎨 Генератор дизайна"])
+tab1, tab2 = st.tabs(["💰 Калькулятор заказа", "🎨 Генератор узоров"])
 
 with tab1:
-    st.header("Параметры изделия")
+    st.header("Расчет по чертежу")
     col1, col2 = st.columns(2)
+    
     with col1:
-        mat_name = st.selectbox("Материал", list(logic.materials.keys()))
-        thick = st.number_input("Толщина (мм)", 0.5, 20.0, 3.0)
-        area = st.number_input("Площадь детали (м2)", 0.01, 10.0, 0.5)
+        mat_name = st.selectbox("Металл", list(logic.materials.keys()))
+        thick = st.number_input("Толщина (мм)", 0.5, 30.0, 3.0)
+        area = st.number_input("Площадь заготовки (м2)", 0.01, 10.0, 0.5)
+        speed = st.slider("Скорость резки (м/мин)", 0.1, 5.0, 0.5)
     
     with col2:
-        dxf_file = st.file_uploader("Загрузить чертеж (DXF)", type="dxf")
-        manual_len = st.number_input("Или введи длину реза (м)", 0.0, 500.0, 0.0)
-
-    if st.button("РАССЧИТАТЬ СТОИМОСТЬ", type="primary"):
-        cut_len = logic.get_dxf_length(dxf_file) if dxf_file else manual_len
-        
-        mat = logic.materials[mat_name]
-        weight = area * (thick / 1000) * mat["density"]
-        mat_cost = weight * mat["price"] * 1.1 # +10% отход
-        work_cost = (cut_len / 0.5 / 60) * 45.0 # пример: 45 евро/час
-        
-        st.divider()
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Вес", f"{round(weight, 1)} кг")
-        c2.metric("Длина реза", f"{round(cut_len, 1)} м")
-        c3.metric("ИТОГО", f"{round(mat_cost + work_cost, 2)} €")
-        st.caption(f"Включая налог и амортизацию оборудования")
+        dxf_file = st.file_uploader("Загрузи свой DXF", type="dxf")
+    
+    if dxf_file:
+        cut_len, doc = logic.get_stats(dxf_file)
+        if doc:
+            st.pyplot(draw_dxf(doc)) # Визуализация загруженного файла
+            
+            mat = logic.materials[mat_name]
+            weight = area * (thick / 1000) * mat["density"]
+            mat_cost = weight * mat["price"] * 1.1 # +10% отход
+            work_time_min = cut_len / speed
+            work_cost = (work_time_min / 60) * 50.0 # 50€/час работы
+            
+            st.divider()
+            res1, res2, res3 = st.columns(3)
+            res1.metric("Вес", f"{round(weight, 1)} кг")
+            res2.metric("Длина реза", f"{round(cut_len, 2)} м")
+            res3.metric("ЦЕНА", f"{round(mat_cost + work_cost, 2)} €")
+            st.info(f"Время резки станка: {round(work_time_min, 1)} мин.")
 
 with tab2:
-    st.header("Генератор паттерна Вороного")
-    gw = st.number_input("Ширина (мм)", 100, 2500, 500)
-    gh = st.number_input("Высота (мм)", 100, 2500, 800)
-    gpts = st.slider("Сложность узора", 5, 150, 40)
+    st.header("Генератор дизайна (Вороной)")
+    gw = st.number_input("Ширина листа (мм)", 100, 2500, 500)
+    gh = st.number_input("Высота листа (мм)", 100, 2500, 800)
+    gpts = st.slider("Плотность узора", 5, 150, 40)
     
-    if st.button("Создать уникальный чертеж"):
-        new_dxf = generate_voronoi(gw, gh, gpts)
+    if st.button("Сгенерировать новый дизайн"):
+        new_doc = generate_voronoi(gw, gh, gpts)
+        st.pyplot(draw_dxf(new_doc)) # Визуализация сгенерированного узора
+        
         out = StringIO()
-        new_dxf.write(out)
+        new_doc.write(out)
         st.download_button(
-            label="📥 СКАЧАТЬ DXF ДЛЯ СТАНКА",
+            label="📥 СКАЧАТЬ DXF ДЛЯ ЛАЗЕРА",
             data=out.getvalue(),
-            file_name="generated_art.dxf",
+            file_name="art_design.dxf",
             mime="application/dxf"
         )
-        st.success("Узор готов! Теперь ты можешь загрузить этот файл во вкладку 'Расчет'.")
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"Таллинн 2024 | Мехатроник-Арт")
+st.sidebar.write("📍 **Tallinn, Lasnamäe / TTÜ**")
+st.sidebar.write("🛠️ Приложение для мехатроника-художника")
