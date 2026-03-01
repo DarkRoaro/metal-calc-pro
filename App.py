@@ -203,26 +203,33 @@ with tab2:
             st.download_button("📥 СКАЧАТЬ DXF", out.getvalue(), "circles.dxf")
 
 with tab3:
-    st.header("Журнал заказов в реальном времени")
+    st.header("Журнал заказов")
+    
+    # Достаем ID таблицы из твоей ссылки в Secrets или вставляем прямо сюда
+    # (Лучше взять из Secrets, если ты там сохранил переменную spreadsheet)
+    sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    
+    # Магия превращения ссылки в формат для прямого чтения
+    csv_url = sheet_url.replace('/edit', '/export?format=csv')
+    
     if st.button("🔄 ОБНОВИТЬ ДАННЫЕ"):
-        st.cache_data.clear() # Очищаем память приложения
-        
-    try:
-        # ttl=0 — это "Time To Live" в 0 секунд, то есть данные всегда свежие
-        df = conn.read(worksheet="Sheet1", ttl=0)
-        
-        if df.empty:
-            st.info("Таблица подключена, но в ней пока нет записей.")
-        else:
-            st.dataframe(df, use_container_width=True)
+        try:
+            # Читаем таблицу напрямую через Pandas
+            df = pd.read_csv(csv_url)
             
-            # Добавим общую сумму всех заказов для статистики
-            if "Цена" in df.columns:
-                total_sum = pd.to_numeric(df["Цена"], errors='coerce').sum()
-                st.metric("Общая сумма заказов в базе", f"{round(total_sum, 2)} €")
-    except Exception as e:
-        st.error(f"Не удалось прочитать таблицу: {e}")
-        st.info("Проверь: 1. Имя листа в Google Sheets (должно быть Sheet1). 2. Доступ по ссылке (Редактор).")
+            if df.empty:
+                st.info("Таблица пуста. Сохрани свой первый заказ!")
+            else:
+                # Показываем таблицу
+                st.dataframe(df, use_container_width=True)
+                
+                # Считаем общую кассу
+                if "Цена" in df.columns:
+                    total = pd.to_numeric(df["Цена"], errors='coerce').sum()
+                    st.metric("Общий оборот (€)", f"{round(total, 2)}")
+        except Exception as e:
+            st.error(f"Не удалось прочитать таблицу: {e}")
+            st.info("Проверь, что в Google Таблице включен доступ 'Все, у кого есть ссылка - Редактор'")
 
 
 
