@@ -85,10 +85,10 @@ def draw_dxf(doc):
 
 # --- 4. ГЕНЕРАТОРЫ ДИЗАЙНА ---
 def generate_voronoi(w, h, pts_count):
-    # Генерируем точки внутри листа
+    # 1. Генерируем случайные точки (семена)
     points = np.random.rand(pts_count, 2) * [w, h]
     
-    # Добавляем точки далеко за границами, чтобы все внутренние ячейки были замкнутыми
+    # 2. Добавляем "далекие" точки, чтобы края были аккуратными
     far_points = np.array([[-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]])
     points = np.vstack([points, far_points])
     
@@ -101,19 +101,20 @@ def generate_voronoi(w, h, pts_count):
             v1 = vor.vertices[ridge]
             v2 = vor.vertices[ridge]
             
-            # ПРОВЕРКА: Точки должны быть внутри прямоугольника [0, 0] до [w, h]
-            # np.all() проверяет сразу и X, и Y координаты
-            c1_ok = np.all((v1 >= 0) & (v1 <= [w, h]))
-            c2_ok = np.all((v2 >= 0) & (v2 <= [w, h]))
-            
-            if c1_ok and c2_ok:
-                # Превращаем в кортежи для ezdxf
-                msp.add_line(tuple(v1), tuple(v2))
+            # ПРОВЕРКА: Точки строго внутри листа [0,0] до [w,h]
+            # .all() проверяет и X и Y одновременно
+            if np.all(v1 >= 0) and np.all(v1 <= [w, h]) and \
+               np.all(v2 >= 0) and np.all(v2 <= [w, h]):
                 
-    # Рамка листа
-    msp.add_lwpolyline([(0,0), (w,0), (w,h), (0,h), (0,0)])
+                # ПРЕВРАЩАЕМ В ОБЫЧНЫЕ ЧИСЛА (Критически важно!)
+                start_point = (float(v1[0]), float(v1[1]))
+                end_point = (float(v2[0]), float(v2[1]))
+                
+                msp.add_line(start_point, end_point)
+                
+    # Рисуем рамку листа
+    msp.add_lwpolyline([(0, 0), (w, 0), (w, h), (0, h), (0, 0)])
     return doc
-
 # --- 5. ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
 st.set_page_config(page_title="ArtMetal Cloud Pro", page_icon="⚒️")
 logic = MetalLogic()
@@ -201,3 +202,4 @@ with tab3:
     except:
 
         st.info("Таблица пока пуста или настраивается...")
+
