@@ -31,15 +31,22 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def save_order(data):
     try:
-        # Указываем worksheet "Sheet1" (или как он у тебя назван внизу таблицы)
+        # Пытаемся прочитать таблицу (указываем имя листа, обычно это "Sheet1")
+        # ttl=0 заставляет программу не кешировать старые данные, а видеть таблицу онлайн
         existing_data = conn.read(worksheet="Sheet1", ttl=0)
-        updated_df = pd.concat([existing_data, pd.DataFrame([data])], ignore_index=True)
+        
+        # Создаем новую строку
+        new_row = pd.DataFrame([data])
+        
+        # Объединяем старое с новым
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        
+        # Записываем обратно в облако
         conn.update(worksheet="Sheet1", data=updated_df)
-        st.success("✅ Сохранено в Google Sheets!")
+        st.success("✅ ЗАКАЗ СОХРАНЕН В GOOGLE SHEETS!")
     except Exception as e:
-        st.error(f"Ошибка: {e}")
-        st.info("Проверь, что в Google Таблице стоит доступ 'Редактор' для всех по ссылке.")
-
+        st.error(f"Ошибка сохранения: {e}")
+        st.info("Проверь: 1. Доступ 'Редактор' в таблице. 2. Название листа должно быть 'Sheet1'.")
 # --- 3. ЛОГИКА И ОТРИСОВКА ---
 class MetalLogic:
     def __init__(self):
@@ -203,5 +210,6 @@ with tab3:
     except:
 
         st.info("Таблица пока пуста или настраивается...")
+
 
 
