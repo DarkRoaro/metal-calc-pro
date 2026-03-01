@@ -203,13 +203,26 @@ with tab2:
             st.download_button("📥 СКАЧАТЬ DXF", out.getvalue(), "circles.dxf")
 
 with tab3:
-    st.header("Журнал в Google Sheets")
+    st.header("Журнал заказов в реальном времени")
+    if st.button("🔄 ОБНОВИТЬ ДАННЫЕ"):
+        st.cache_data.clear() # Очищаем память приложения
+        
     try:
-        df = conn.read(ttl=0)
-        st.dataframe(df)
-    except:
-
-        st.info("Таблица пока пуста или настраивается...")
+        # ttl=0 — это "Time To Live" в 0 секунд, то есть данные всегда свежие
+        df = conn.read(worksheet="Sheet1", ttl=0)
+        
+        if df.empty:
+            st.info("Таблица подключена, но в ней пока нет записей.")
+        else:
+            st.dataframe(df, use_container_width=True)
+            
+            # Добавим общую сумму всех заказов для статистики
+            if "Цена" in df.columns:
+                total_sum = pd.to_numeric(df["Цена"], errors='coerce').sum()
+                st.metric("Общая сумма заказов в базе", f"{round(total_sum, 2)} €")
+    except Exception as e:
+        st.error(f"Не удалось прочитать таблицу: {e}")
+        st.info("Проверь: 1. Имя листа в Google Sheets (должно быть Sheet1). 2. Доступ по ссылке (Редактор).")
 
 
 
