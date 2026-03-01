@@ -85,14 +85,11 @@ def draw_dxf(doc):
 
 # --- 4. ГЕНЕРАТОРЫ ДИЗАЙНА ---
 def generate_voronoi(w, h, pts_count):
-    # Генерируем случайные точки внутри области
+    # Генерируем точки внутри листа
     points = np.random.rand(pts_count, 2) * [w, h]
     
-    # Добавляем фиктивные точки далеко за границами, 
-    # чтобы все внутренние ячейки были замкнутыми
-    far_points = np.array([
-        [-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]
-    ])
+    # Добавляем точки далеко за границами, чтобы все внутренние ячейки были замкнутыми
+    far_points = np.array([[-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]])
     points = np.vstack([points, far_points])
     
     vor = Voronoi(points)
@@ -101,16 +98,19 @@ def generate_voronoi(w, h, pts_count):
     
     for ridge in vor.ridge_vertices:
         if -1 not in ridge:
-            v1 = vor.vertices[ridge[0]]
-            v2 = vor.vertices[ridge[1]]
+            v1 = vor.vertices[ridge]
+            v2 = vor.vertices[ridge]
             
-            # Проверяем, что обе точки линии лежат ВНУТРИ нашего листа
-            # Используем .all() для массивов numpy, чтобы избежать ValueError
-            if (0 <= v1[0] <= w and 0 <= v1[1] <= h and 
-                0 <= v2[0] <= w and 0 <= v2[1] <= h):
-                msp.add_line(v1, v2)
+            # ПРОВЕРКА: Точки должны быть внутри прямоугольника [0, 0] до [w, h]
+            # np.all() проверяет сразу и X, и Y координаты
+            c1_ok = np.all((v1 >= 0) & (v1 <= [w, h]))
+            c2_ok = np.all((v2 >= 0) & (v2 <= [w, h]))
+            
+            if c1_ok and c2_ok:
+                # Превращаем в кортежи для ezdxf
+                msp.add_line(tuple(v1), tuple(v2))
                 
-    # Добавляем рамку листа
+    # Рамка листа
     msp.add_lwpolyline([(0,0), (w,0), (w,h), (0,h), (0,0)])
     return doc
 
@@ -199,4 +199,5 @@ with tab3:
         df = conn.read(ttl=0)
         st.dataframe(df)
     except:
+
         st.info("Таблица пока пуста или настраивается...")
