@@ -116,35 +116,50 @@ st.title("⚒️ ArtMetal: Дизайн и Расчет")
 tab1, tab2 = st.tabs(["💰 Калькулятор заказа", "🎨 Генератор узоров"])
 
 with tab1:
-    st.header("Расчет по чертежу")
+    st.header("Расчет заказа")
     col1, col2 = st.columns(2)
     
     with col1:
         mat_name = st.selectbox("Металл", list(logic.materials.keys()))
         thick = st.number_input("Толщина (мм)", 0.5, 30.0, 3.0)
-        area = st.number_input("Площадь заготовки (м2)", 0.01, 10.0, 0.5)
+        area = st.number_input("Площадь детали (м2)", 0.01, 10.0, 0.5)
         speed = st.slider("Скорость резки (м/мин)", 0.1, 5.0, 0.5)
     
     with col2:
         dxf_file = st.file_uploader("Загрузи свой DXF", type="dxf")
+        manual_len = st.number_input("Или введи длину реза вручную (м)", 0.0, 500.0, 0.0)
     
-    if dxf_file:
-        cut_len, doc = logic.get_stats(dxf_file)
-        if doc:
-            st.pyplot(draw_dxf(doc)) # Визуализация загруженного файла
+    # КНОПКА ТЕПЕРЬ ВСЕГДА ВИДИМА (вне зависимости от наличия файла)
+    if st.button("РАССЧИТАТЬ СТОИМОСТЬ", type="primary"):
+        # Определяем длину реза: из файла или ручного ввода
+        if dxf_file:
+            cut_len, doc = logic.get_stats(dxf_file)
+            if doc:
+                st.pyplot(draw_dxf(doc))
+        else:
+            cut_len = manual_len
             
-            mat = logic.materials[mat_name]
-            weight = area * (thick / 1000) * mat["density"]
-            mat_cost = weight * mat["price"] * 1.1 # +10% отход
+        # Математика расчета
+        mat = logic.materials[mat_name]
+        weight = area * (thick / 1000) * mat["density"]
+        mat_cost = weight * mat["price"] * 1.1 # +10% отход
+        
+        # Если длина реза > 0, считаем работу
+        if cut_len > 0:
             work_time_min = cut_len / speed
-            work_cost = (work_time_min / 60) * 50.0 # 50€/час работы
-            
-            st.divider()
-            res1, res2, res3 = st.columns(3)
-            res1.metric("Вес", f"{round(weight, 1)} кг")
-            res2.metric("Длина реза", f"{round(cut_len, 2)} м")
-            res3.metric("ЦЕНА", f"{round(mat_cost + work_cost, 2)} €")
-            st.info(f"Время резки станка: {round(work_time_min, 1)} мин.")
+            work_cost = (work_time_min / 60) * 50.0 # 50€/час
+        else:
+            work_time_min = 0
+            work_cost = 0
+
+        st.divider()
+        res1, res2, res3 = st.columns(3)
+        res1.metric("Вес", f"{round(weight, 1)} кг")
+        res2.metric("Длина реза", f"{round(cut_len, 2)} м")
+        res3.metric("ЦЕНА", f"{round(mat_cost + work_cost, 2)} €")
+        
+        if work_time_min > 0:
+            st.info(f"Ориентировочное время работы станка: {round(work_time_min, 1)} мин.")
 
 with tab2:
     st.header("Генератор дизайна (Вороной)")
