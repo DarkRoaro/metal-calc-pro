@@ -3,3 +3,4 @@ ezdxf
 scipy
 numpy
 matplotlib
+st-gsheets-connection
