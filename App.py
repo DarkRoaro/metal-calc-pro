@@ -85,35 +85,36 @@ def draw_dxf(doc):
 
 # --- 4. ГЕНЕРАТОРЫ ДИЗАЙНА ---
 def generate_voronoi(w, h, pts_count):
-    # 1. Генерируем случайные точки (семена)
+    # 1. Генерируем точки внутри области
     points = np.random.rand(pts_count, 2) * [w, h]
     
-    # 2. Добавляем "далекие" точки, чтобы края были аккуратными
-    far_points = np.array([[-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]])
-    points = np.vstack([points, far_points])
+    # 2. Добавляем точки далеко за границами для корректных краев
+    far = np.array([[-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]])
+    points = np.vstack([points, far])
     
     vor = Voronoi(points)
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
     
+    # 3. Перебираем ребра (ridges)
     for ridge in vor.ridge_vertices:
-        if -1 not in ridge:
-            v1 = vor.vertices[ridge]
-            v2 = vor.vertices[ridge]
+        # Проверяем, что ребро имеет ровно 2 вершины и они не "бесконечные" (-1)
+        if len(ridge) == 2 and -1 not in ridge:
+            v1_raw = vor.vertices[ridge[0]]
+            v2_raw = vor.vertices[ridge[1]]
             
-            # ПРОВЕРКА: Точки строго внутри листа [0,0] до [w,h]
-            # .all() проверяет и X и Y одновременно
-            if np.all(v1 >= 0) and np.all(v1 <= [w, h]) and \
-               np.all(v2 >= 0) and np.all(v2 <= [w, h]):
+            # Проверка: обе точки должны быть внутри листа [w, h]
+            if (0 <= v1_raw[0] <= w and 0 <= v1_raw[1] <= h and 
+                0 <= v2_raw[0] <= w and 0 <= v2_raw[1] <= h):
                 
-                # ПРЕВРАЩАЕМ В ОБЫЧНЫЕ ЧИСЛА (Критически важно!)
-                start_point = (float(v1[0]), float(v1[1]))
-                end_point = (float(v2[0]), float(v2[1]))
+                # Превращаем в чистые числа для ezdxf
+                p1 = (float(v1_raw[0]), float(v1_raw[1]))
+                p2 = (float(v2_raw[0]), float(v2_raw[1]))
                 
-                msp.add_line(start_point, end_point)
+                msp.add_line(p1, p2)
                 
-    # Рисуем рамку листа
-    msp.add_lwpolyline([(0, 0), (w, 0), (w, h), (0, h), (0, 0)])
+    # 4. Рисуем рамку листа
+    msp.add_lwpolyline([(0, 0), (float(w), 0), (float(w), float(h)), (0, float(h)), (0, 0)])
     return doc
 # --- 5. ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
 st.set_page_config(page_title="ArtMetal Cloud Pro", page_icon="⚒️")
@@ -202,4 +203,5 @@ with tab3:
     except:
 
         st.info("Таблица пока пуста или настраивается...")
+
 
