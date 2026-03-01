@@ -31,12 +31,14 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def save_order(data):
     try:
-        existing_data = conn.read(ttl=0)
+        # Указываем worksheet "Sheet1" (или как он у тебя назван внизу таблицы)
+        existing_data = conn.read(worksheet="Sheet1", ttl=0)
         updated_df = pd.concat([existing_data, pd.DataFrame([data])], ignore_index=True)
-        conn.update(data=updated_df)
-        st.success("✅ Данные заказа сохранены в Google Таблицы!")
+        conn.update(worksheet="Sheet1", data=updated_df)
+        st.success("✅ Сохранено в Google Sheets!")
     except Exception as e:
-        st.error(f"Ошибка сохранения: {e}")
+        st.error(f"Ошибка: {e}")
+        st.info("Проверь, что в Google Таблице стоит доступ 'Редактор' для всех по ссылке.")
 
 # --- 3. ЛОГИКА И ОТРИСОВКА ---
 class MetalLogic:
@@ -83,16 +85,32 @@ def draw_dxf(doc):
 
 # --- 4. ГЕНЕРАТОРЫ ДИЗАЙНА ---
 def generate_voronoi(w, h, pts_count):
+    # Генерируем случайные точки внутри области
     points = np.random.rand(pts_count, 2) * [w, h]
-    points = np.vstack([points, [ [w,0], [w,h], [0,h]]])
+    
+    # Добавляем фиктивные точки далеко за границами, 
+    # чтобы все внутренние ячейки были замкнутыми
+    far_points = np.array([
+        [-w*2, -h*2], [-w*2, h*3], [w*3, h*3], [w*3, -h*2]
+    ])
+    points = np.vstack([points, far_points])
+    
     vor = Voronoi(points)
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
-    for r in vor.ridge_vertices:
-        if -1 not in r:
-            v1, v2 = vor.vertices[r], vor.vertices[r]
-            if (0 <= v1[0] <= w and 0 <= v1[1] <= h and 0 <= v2[0] <= w and 0 <= v2[1] <= h):
+    
+    for ridge in vor.ridge_vertices:
+        if -1 not in ridge:
+            v1 = vor.vertices[ridge[0]]
+            v2 = vor.vertices[ridge[1]]
+            
+            # Проверяем, что обе точки линии лежат ВНУТРИ нашего листа
+            # Используем .all() для массивов numpy, чтобы избежать ValueError
+            if (0 <= v1[0] <= w and 0 <= v1[1] <= h and 
+                0 <= v2[0] <= w and 0 <= v2[1] <= h):
                 msp.add_line(v1, v2)
+                
+    # Добавляем рамку листа
     msp.add_lwpolyline([(0,0), (w,0), (w,h), (0,h), (0,0)])
     return doc
 
